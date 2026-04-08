@@ -258,7 +258,7 @@ def run_task(task_id: str) -> dict:
     # [END] — mandatory format: success steps score rewards
     print(
         f"[END] success={success_val} steps={steps} "
-        f"score={final_score:.2f} rewards={rewards_str}",
+        f"score={final_score:.4f} rewards={rewards_str}",
         flush=True,
     )
 
