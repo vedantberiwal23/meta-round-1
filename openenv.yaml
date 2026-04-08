@@ -125,8 +125,8 @@ observation_space:
       description: True when episode is complete (success or step limit)
     score_so_far:
       dtype: float
-      range: [0.0, 1.0]
-      description: Current episode score
+      range: (0.0, 1.0)
+      description: Current episode score (strictly between 0 and 1 exclusive)
 
 # ---------------------------------------------------------------------------
 # Reward
@@ -151,8 +151,8 @@ reward:
       value: -0.02
       description: Per-step cost to encourage efficient resolution
   final_score:
-    formula: "clamp(correct_count * (0.80/N) + completion_bonus - extra_steps*0.05 - wrong_actions*0.12, 0.0, 1.0)"
-    note: A perfect agent always scores exactly 1.0, regardless of task difficulty.
+    formula: "clamp(correct_count * (0.80/N) + completion_bonus - extra_steps*0.05 - wrong_actions*0.12, 0.001, 0.999)"
+    note: A perfect agent scores 0.999 (max). Scores are strictly in (0, 1) exclusive.
 
 # ---------------------------------------------------------------------------
 # Tasks
@@ -163,7 +163,7 @@ tasks:
     difficulty: easy
     max_steps: 5
     required_actions: 1
-    perfect_score: 1.0
+    perfect_score: 0.999
     description: >
       A single microservice (payment-service) has been OOMKilled and is in
       CrashLoopBackOff. ~120,000 users cannot complete checkout.
@@ -177,7 +177,7 @@ tasks:
     difficulty: medium
     max_steps: 8
     required_actions: 2
-    perfect_score: 1.0
+    perfect_score: 0.999
     description: >
       A bad deploy introduced a full-table-scan query on a 38M-row table.
       Under Black Friday load the database is saturated, the API gateway
@@ -194,7 +194,7 @@ tasks:
     difficulty: hard
     max_steps: 10
     required_actions: 3
-    perfect_score: 1.0
+    perfect_score: 0.999
     description: >
       An empty JWT_SECRET in a Helm chart caused auth-service to crash,
       bringing down the entire API gateway and generating a frontend
@@ -228,10 +228,10 @@ baseline:
   temperature: 0.05
   seed: 42
   scores:
-    easy:   1.0000
-    medium: 1.0000
-    hard:   1.0000
-    average: 1.0000
+    easy:   0.9990
+    medium: 0.9990
+    hard:   0.9990
+    average: 0.9990
   note: >
-    Scores above are theoretical optima. Run inference.py with a valid
-    HF_TOKEN against a running instance to reproduce empirical scores.
+    Scores are clamped to (0.001, 0.999) exclusive. Run inference.py with a
+    valid HF_TOKEN against a running instance to reproduce empirical scores.
