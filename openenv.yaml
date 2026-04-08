@@ -1,0 +1,237 @@
+name: production-incident-response-simulator
+version: "2.0.0"
+description: >
+  A real-world SRE evaluation environment where AI agents diagnose and resolve
+  production incidents of increasing complexity — from a single service crash
+  to a full cascading auth meltdown affecting millions of users.
+  Implements the OpenEnv interface with typed Pydantic models, deterministic
+  state transitions, and an incremental reward function that gives per-step
+  feedback throughout the episode.
+
+author: hackathon-submission
+tags:
+  - openenv
+  - sre
+  - devops
+  - incident-response
+  - real-world
+  - infrastructure
+
+license: MIT
+
+# ---------------------------------------------------------------------------
+# Interface
+# ---------------------------------------------------------------------------
+interface:
+  reset_endpoint:  "POST /reset"
+  step_endpoint:   "POST /step"
+  state_endpoint:  "GET  /state"
+  health_endpoint: "GET  /health"
+  schema_endpoint: "GET  /schema"
+
+# ---------------------------------------------------------------------------
+# Action space
+# ---------------------------------------------------------------------------
+action_space:
+  type: discrete
+  description: >
+    One remediation action per step, targeting a specific service.
+  fields:
+    type:
+      dtype: string
+      values:
+        - restart_service   # restart a crashed / OOMKilled container
+        - scale_service     # add replicas to an overloaded service
+        - fix_query         # apply a DB index / rewrite a slow query
+        - clear_cache       # flush stale frontend/proxy cache
+        - rollback          # revert to last known-good deploy
+        - check_logs        # read-only diagnostic (no state change)
+    target:
+      dtype: string
+      values:
+        - auth-service
+        - api-gateway
+        - frontend
+        - user-db
+        - payment-service
+    params:
+      dtype: dict
+      description: Optional extra parameters (typically empty {})
+
+# ---------------------------------------------------------------------------
+# Observation space
+# ---------------------------------------------------------------------------
+observation_space:
+  type: object
+  description: >
+    Full real-time snapshot of the production system, task context,
+    business impact, and episode progress.
+  fields:
+    task_id:
+      dtype: string
+      description: Task identifier ("easy" | "medium" | "hard")
+    task_name:
+      dtype: string
+      description: Human-readable task title
+    difficulty:
+      dtype: string
+      values: [easy, medium, hard]
+    scenario:
+      dtype: string
+      description: Incident description and remediation objective
+    hint:
+      dtype: string
+      description: Optional hint for the agent
+    services:
+      dtype: list[ServiceStatus]
+      description: Live telemetry for each microservice
+      service_fields:
+        name:         string
+        status:       string  # "healthy" | "degraded" | "down"
+        cpu:          float   # percentage 0–100
+        memory:       float   # percentage 0–100
+        error_rate:   float   # fraction 0.0–1.0
+        latency_ms:   int     # p99 latency in milliseconds
+        request_rate: int     # requests per second
+    alerts:
+      dtype: list[Alert]
+      description: Active alerts derived deterministically from service states
+      alert_fields:
+        severity:  string  # "critical" | "warning" | "info"
+        message:   string
+        service:   string
+        timestamp: string
+    logs:
+      dtype: list[string]
+      description: Rolling window of the last 20 log lines (newest last)
+    dependencies:
+      dtype: dict[string, list[string]]
+      description: Upstream service dependencies (service → list of services it needs)
+    business_impact:
+      dtype: object
+      description: Quantified blast radius of the current incident
+      fields:
+        users_affected:          int
+        revenue_at_risk_per_min: int
+        sla_breach_in_min:       int
+    step_number:
+      dtype: int
+      description: Current step number (1-indexed)
+    max_steps:
+      dtype: int
+      description: Maximum steps allowed before episode terminates
+    done:
+      dtype: bool
+      description: True when episode is complete (success or step limit)
+    score_so_far:
+      dtype: float
+      range: [0.0, 1.0]
+      description: Current episode score
+
+# ---------------------------------------------------------------------------
+# Reward
+# ---------------------------------------------------------------------------
+reward:
+  range: [-1.0, 1.0]
+  type: incremental
+  description: >
+    Per-step reward is returned on every action — not just at episode end.
+    This provides a dense training signal throughout the episode trajectory.
+  components:
+    correct_action:
+      value: "0.80 / N  (N = number of required actions for this task)"
+      description: Reward for each correct action taken in the required order
+    completion_bonus:
+      value: 0.20
+      description: Unlocked when ALL required actions are completed correctly
+    wrong_action_penalty:
+      value: -0.12
+      description: Penalty for actions that are incorrect or unnecessary
+    step_overhead:
+      value: -0.02
+      description: Per-step cost to encourage efficient resolution
+  final_score:
+    formula: "clamp(correct_count * (0.80/N) + completion_bonus - extra_steps*0.05 - wrong_actions*0.12, 0.0, 1.0)"
+    note: A perfect agent always scores exactly 1.0, regardless of task difficulty.
+
+# ---------------------------------------------------------------------------
+# Tasks
+# ---------------------------------------------------------------------------
+tasks:
+  - id: easy
+    name: "Payment Service OOM Crash"
+    difficulty: easy
+    max_steps: 5
+    required_actions: 1
+    perfect_score: 1.0
+    description: >
+      A single microservice (payment-service) has been OOMKilled and is in
+      CrashLoopBackOff. ~120,000 users cannot complete checkout.
+      One root-cause action restores the system.
+    expected_sequence:
+      - type: restart_service
+        target: payment-service
+
+  - id: medium
+    name: "Black Friday DB Overload"
+    difficulty: medium
+    max_steps: 8
+    required_actions: 2
+    perfect_score: 1.0
+    description: >
+      A bad deploy introduced a full-table-scan query on a 38M-row table.
+      Under Black Friday load the database is saturated, the API gateway
+      has a 1,400-request backlog, and the frontend is timing out.
+      Two actions required (order flexible).
+    expected_sequence:
+      - type: scale_service
+        target: api-gateway
+      - type: fix_query
+        target: user-db
+
+  - id: hard
+    name: "Auth Service Cascade — Total Outage"
+    difficulty: hard
+    max_steps: 10
+    required_actions: 3
+    perfect_score: 1.0
+    description: >
+      An empty JWT_SECRET in a Helm chart caused auth-service to crash,
+      bringing down the entire API gateway and generating a frontend
+      retry storm. Three actions in strict dependency order are required
+      to restore service to 1.4M affected users.
+    expected_sequence:
+      - type: restart_service
+        target: auth-service
+      - type: scale_service
+        target: api-gateway
+      - type: clear_cache
+        target: frontend
+
+# ---------------------------------------------------------------------------
+# Deployment
+# ---------------------------------------------------------------------------
+deployment:
+  platform: huggingface-spaces
+  sdk: docker
+  port: 7860
+  health_check: "GET /health"
+  tags:
+    - openenv
+
+# ---------------------------------------------------------------------------
+# Baseline
+# ---------------------------------------------------------------------------
+baseline:
+  model: "meta-llama/Llama-3.3-70B-Instruct"
+  provider: huggingface-inference
+  temperature: 0.05
+  seed: 42
+  scores:
+    easy:   1.0000
+    medium: 1.0000
+    hard:   1.0000
+    average: 1.0000
+  note: >
+    Scores above are theoretical optima. Run inference.py with a valid
+    HF_TOKEN against a running instance to reproduce empirical scores.

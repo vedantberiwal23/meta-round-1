@@ -1,0 +1,24 @@
+[project]
+name = "production-incident-response-simulator"
+version = "2.0.0"
+description = "OpenEnv-compliant SRE incident simulator for AI agent evaluation"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2.0",
+    "openai>=1.0.0",
+    "httpx",
+    "python-dotenv",
+    "openenv-core>=0.2.0",
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["server"]
