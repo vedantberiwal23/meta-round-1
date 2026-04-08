@@ -1,4 +1,4 @@
-'""
+"""
 app.py — FastAPI server for the Production Incident Response Simulator.
 
 Endpoints:
