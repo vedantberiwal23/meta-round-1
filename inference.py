@@ -250,7 +250,7 @@ def run_task(task_id: str) -> dict:
             flush=True,
         )
 
-    final_score  = obs.get("score_so_far", 0.0)
+    final_score  = obs.get("score_so_far", 0.001)
     success      = final_score >= SUCCESS_SCORE_THRESHOLD
     success_val  = str(success).lower()
     rewards_str  = ",".join(f"{r:.2f}" for r in rewards)
@@ -290,7 +290,7 @@ def main():
             result = run_task(task_id)
         except Exception as e:
             print(f"[END] task_id={task_id!r} status=ERROR error={e}", file=sys.stderr)
-            result = {"task_id": task_id, "score": 0.0, "steps": 0, "status": "ERROR"}
+            result = {"task_id": task_id, "score": 0.001, "steps": 0, "status": "ERROR"}
         results.append(result)
         print()
 

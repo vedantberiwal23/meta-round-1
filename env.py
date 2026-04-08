@@ -401,5 +401,5 @@ class IncidentEnv:
             step_number=self._step,
             max_steps=self._task.max_steps,
             done=self._done,
-            score_so_far=self._grader.final_score() if self._grader else 0.0,
+            score_so_far=self._grader.final_score() if self._grader else 0.001,
         )
