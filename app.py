@@ -1,4 +1,4 @@
-"""
+'""
 app.py — FastAPI server for the Production Incident Response Simulator.
 
 Endpoints:
@@ -60,7 +60,7 @@ _stats = {
 # Request / response models
 # ---------------------------------------------------------------------------
 class ResetRequest(BaseModel):
-    task_id: str = "easy"
+    task_id: Optional[str] = "easy"   # ← FIXED: fully optional with default
 
 
 class TaskInfo(BaseModel):
@@ -183,7 +183,7 @@ def schema():
         # OpenEnv runtime contract keys
         "action":      action_schema,
         "observation": observation_schema,
-        "state":       observation_schema,   # state and observation share the same schema
+        "state":       observation_schema,
         # Extended info
         "reward": {
             "range":       [-1.0, 1.0],
@@ -247,16 +247,20 @@ def list_tasks():
     }
 
 
-@app.post("/reset", response_model=Observation)
-def reset(request: ResetRequest):
+@app.post("/reset", response_model=Observation)   # ← FIXED: accepts empty body
+def reset(request: Optional[ResetRequest] = None):
     """
     Start a new episode.
 
-    Body:
+    Body (optional):
         {"task_id": "easy" | "medium" | "hard"}
 
+    If no body is sent, defaults to task_id="easy".
     Returns the initial Observation — full telemetry, alerts, logs, and hint.
     """
+    if request is None:
+        request = ResetRequest()
+
     if request.task_id not in TASKS:
         raise HTTPException(
             status_code=400,
