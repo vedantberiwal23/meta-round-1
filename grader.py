@@ -1,9 +1,9 @@
 """
 grader.py — Deterministic reward/scoring for the Production Incident Response Simulator.
 
-Score formula (clamped to [0.0, 1.0]):
+Score formula (clamped to (0.0, 1.0) exclusive):
 
-  A perfect agent (all required actions completed, no extra steps) scores 1.0
+  A perfect agent (all required actions completed, no extra steps) scores ~0.999
   on every task regardless of task length or ordering mode.
 
   Per-episode breakdown:
@@ -13,7 +13,7 @@ Score formula (clamped to [0.0, 1.0]):
     wrong_action_penalty = wrong_count * 0.12
 
   final_score = clamp(progress_score + completion_bonus
-                      - extra_step_penalty - wrong_action_penalty, 0.0, 1.0)
+                      - extra_step_penalty - wrong_action_penalty, 0.001, 0.999)
 
   Ordering modes (set via task.order_strict):
     order_strict=True  — actions must be taken in the EXACT listed order (easy, hard)
@@ -37,7 +37,7 @@ class Grader:
     Usage:
         grader = Grader(task)
         reward = grader.record(action_dict)  # called by env.step()
-        score  = grader.final_score()        # [0.0, 1.0], authoritative
+        score  = grader.final_score()        # (0.0, 1.0) exclusive, authoritative
         done   = grader.is_complete()
     """
 
@@ -50,13 +50,17 @@ class Grader:
     # Bonus unlocked when ALL required actions are completed
     COMPLETION_BONUS = 0.20
 
+    # Score bounds — strictly open interval (0, 1) as required by the judge
+    SCORE_MIN = 0.001
+    SCORE_MAX = 0.999
+
     def __init__(self, task: TaskDefinition):
         self.task         = task
         self.expected: List[Dict] = task.expected_action_sequence
         self._n           = len(self.expected)
         self._order_strict = getattr(task, "order_strict", True)
 
-        # Per-action reward scales so a perfect agent earns exactly 1.0
+        # Per-action reward scales so a perfect agent earns exactly 0.80 in progress
         self._per_action_bonus = 0.80 / max(self._n, 1)
 
         self.actions_taken: List[Dict] = []
@@ -98,6 +102,8 @@ class Grader:
             # All required actions already done — unnecessary extra action
             step_reward -= self.WRONG_PENALTY
 
+        # Clamp step reward to strictly open interval
+        step_reward = max(-0.999, min(0.999, step_reward))
         self._last_step_reward = round(step_reward, 4)
         return self._last_step_reward
 
@@ -110,8 +116,8 @@ class Grader:
     # ------------------------------------------------------------------
     def final_score(self) -> float:
         """
-        Compute the overall episode score in [0.0, 1.0].
-        A perfect agent always scores exactly 1.0.
+        Compute the overall episode score strictly in (0.0, 1.0) exclusive.
+        Required by the judge — 0.0 and 1.0 are not allowed.
         """
         total        = len(self.actions_taken)
         extra_steps  = max(0, total - self._n)
@@ -122,7 +128,9 @@ class Grader:
         score -= extra_steps * self.EXTRA_PENALTY
         score -= self._count_wrong() * self.WRONG_PENALTY
 
-        return round(max(0.0, min(1.0, score)), 4)
+        # Clamp to strictly open interval (0.001, 0.999) — 0.0 and 1.0 not allowed
+        score = max(self.SCORE_MIN, min(self.SCORE_MAX, score))
+        return round(score, 4)
 
     # ------------------------------------------------------------------
     # Status queries
